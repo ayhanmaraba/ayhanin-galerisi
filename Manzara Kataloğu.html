@@ -15,9 +15,11 @@
     --like: #4fc38a;
     --dislike: #e0605a;
     --radius: 12px;
+    --bg-glass: rgba(15,17,19,.88);
+    --border: #1f2327;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  html, body { margin: 0; background: var(--bg); color: var(--text); transition: background-color 1.2s ease; }
   body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -27,9 +29,10 @@
   /* Üst kısım */
   header {
     position: sticky; top: 0; z-index: 10;
-    background: rgba(15,17,19,.88);
+    background: var(--bg-glass);
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid #1f2327;
+    border-bottom: 1px solid var(--border);
+    transition: background-color 1.2s ease, border-color 1.2s ease;
   }
   .bar {
     max-width: 1600px; margin: 0 auto;
@@ -38,7 +41,7 @@
   }
   h1 { margin: 0; font-size: 1.35rem; font-weight: 650; letter-spacing: .01em; }
   .sub { margin: 2px 0 0; color: var(--muted); font-size: .85rem; }
-  .tabs { display: flex; background: var(--panel); border-radius: 999px; padding: 4px; gap: 2px; }
+  .tabs { display: flex; background: var(--panel); transition: background-color 1.2s ease; border-radius: 999px; padding: 4px; gap: 2px; }
   .tab {
     border: 0; background: transparent; padding: 7px 14px; border-radius: 999px;
     color: var(--muted); font-size: .9rem; white-space: nowrap;
@@ -57,7 +60,7 @@
     position: relative; break-inside: avoid; margin: 0 0 14px;
     border-radius: var(--radius); overflow: hidden;
     background: var(--panel-2);
-    transition: opacity .25s;
+    transition: opacity .25s, background-color 1.2s ease;
   }
   .card img {
     display: block; width: 100%; height: auto; cursor: zoom-in;
@@ -293,6 +296,71 @@
   const thumbUrl = (p) => "https://picsum.photos/id/" + p.id + "/800/" + Math.round(800 * p.h / p.w);
   const fullUrl  = (p) => "https://picsum.photos/id/" + p.id + "/1920/" + Math.round(1920 * p.h / p.w);
 
+  // ---------- Fotoğraflara göre arka plan rengi ----------
+  // İlk yüklenen fotoğraflardan renk tonu dağılımı çıkarılır; en baskın birkaç tondan
+  // biri rastgele seçilip koyu tema o tona boyanır. Her açılışta foto ve seçim değiştiği
+  // için renk de değişir.
+  const SAMPLE_TARGET = 8;
+  const hueWeight = new Array(36).fill(0), hueSat = new Array(36).fill(0);
+  let samples = 0, themeApplied = false, themeTimer = null;
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > .5 ? d / (2 - max - min) : d / (max + min);
+    let h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+  }
+
+  function sampleImage(img) {
+    if (themeApplied) return;
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = 32;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, 32, 32);
+      const d = ctx.getImageData(0, 0, 32, 32).data;
+      for (let i = 0; i < d.length; i += 4) {
+        const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+        if (s < .15 || l < .1 || l > .9) continue;   // gri, siyah, beyaz pikselleri sayma
+        const bin = Math.floor(h / 10) % 36;
+        hueWeight[bin] += s;
+        hueSat[bin] += s * s;
+      }
+    } catch (e) { return; }                         // renk okunamazsa varsayılan koyu tema kalır
+    samples++;
+    if (samples >= SAMPLE_TARGET) applyTheme();
+    else if (!themeTimer) themeTimer = setTimeout(applyTheme, 3000);
+  }
+
+  function applyTheme() {
+    if (themeApplied) return;
+    themeApplied = true;
+    clearTimeout(themeTimer);
+    const ranked = hueWeight.map((w, bin) => ({ bin, w })).filter((x) => x.w > 0)
+      .sort((a, b) => b.w - a.w).slice(0, 3);
+    if (!ranked.length) { setPalette(Math.random() * 360, 0.1); return; }   // hep gri fotoğraflar
+    let r = Math.random() * ranked.reduce((s, x) => s + x.w, 0), pick = ranked[0];
+    for (const x of ranked) { if ((r -= x.w) <= 0) { pick = x; break; } }
+    const hue = pick.bin * 10 + 5 + (Math.random() * 6 - 3);
+    setPalette(hue, hueSat[pick.bin] / pick.w);
+  }
+
+  function setPalette(h, s) {
+    h = Math.round((h + 360) % 360);
+    const sat = Math.round(Math.min(55, 15 + s * 45));
+    const root = document.documentElement.style;
+    root.setProperty("--bg",       `hsl(${h} ${sat}% 9%)`);
+    root.setProperty("--bg-glass", `hsl(${h} ${sat}% 9% / .85)`);
+    root.setProperty("--panel",    `hsl(${h} ${Math.round(sat * .8)}% 13%)`);
+    root.setProperty("--panel-2",  `hsl(${h} ${Math.round(sat * .7)}% 17%)`);
+    root.setProperty("--border",   `hsl(${h} ${Math.round(sat * .6)}% 15%)`);
+    root.setProperty("--accent",   `hsl(${h} 60% 68%)`);
+    root.setProperty("--muted",    `hsl(${h} 12% 62%)`);
+  }
+
   // ---------- Galeri ----------
   let view = "all";
   let shown = [];           // "Tümü" görünümündeki fotoğraflar (sırasıyla)
@@ -308,8 +376,9 @@
     img.width = 800;
     img.height = Math.round(800 * photo.h / photo.w);
     img.style.aspectRatio = photo.w + " / " + photo.h;
+    img.crossOrigin = "anonymous";   // renk okuyabilmek için
     img.src = thumbUrl(photo);
-    img.onload = () => { img.classList.add("loaded"); loadedAny = true; };
+    img.onload = () => { img.classList.add("loaded"); loadedAny = true; sampleImage(img); };
     img.onerror = () => {
       // Bulunamayan foto (yedek modda olabilir) — kaldır
       const i = list.indexOf(photo);
