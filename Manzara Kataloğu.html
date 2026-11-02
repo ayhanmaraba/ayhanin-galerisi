@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ayhan'ın Galerisi</title>
+<style>
+  :root {
+    --bg: #0f1113;
+    --panel: #181b1f;
+    --panel-2: #22262b;
+    --text: #e9ecef;
+    --muted: #8a929b;
+    --accent: #7cc4a4;
+    --like: #4fc38a;
+    --dislike: #e0605a;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* Üst kısım */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(15,17,19,.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #1f2327;
+  }
+  .bar {
+    max-width: 1600px; margin: 0 auto;
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  h1 { margin: 0; font-size: 1.35rem; font-weight: 650; letter-spacing: .01em; }
+  .sub { margin: 2px 0 0; color: var(--muted); font-size: .85rem; }
+  .tabs { display: flex; background: var(--panel); border-radius: 999px; padding: 4px; gap: 2px; }
+  .tab {
+    border: 0; background: transparent; padding: 7px 14px; border-radius: 999px;
+    color: var(--muted); font-size: .9rem; white-space: nowrap;
+  }
+  .tab[aria-selected="true"] { background: var(--panel-2); color: var(--text); }
+  .tab .count { color: var(--like); margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+  /* Galeri */
+  main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+  .gallery { columns: 4 300px; column-gap: 14px; }
+  @media (max-width: 1200px) { .gallery { columns: 3 260px; } }
+  @media (max-width: 860px)  { .gallery { columns: 2 220px; } }
+  @media (max-width: 520px)  { .gallery { columns: 1; } }
+
+  .card {
+    position: relative; break-inside: avoid; margin: 0 0 14px;
+    border-radius: var(--radius); overflow: hidden;
+    background: var(--panel-2);
+    transition: opacity .25s;
+  }
+  .card img {
+    display: block; width: 100%; height: auto; cursor: zoom-in;
+    opacity: 0; transition: opacity .4s, transform .5s;
+  }
+  .card img.loaded { opacity: 1; }
+  .card:hover img { transform: scale(1.03); }
+  .card.disliked img { opacity: .35; filter: grayscale(.7); }
+  .card.disliked::after {
+    content: "Beğenilmedi";
+    position: absolute; left: 10px; top: 10px;
+    background: rgba(224,96,90,.9); color: #fff;
+    font-size: .75rem; padding: 3px 8px; border-radius: 999px; pointer-events: none;
+  }
+  .card.liked::before {
+    content: "👍"; position: absolute; left: 10px; top: 10px; z-index: 1;
+    background: rgba(15,17,19,.7); border-radius: 999px; padding: 2px 7px; font-size: .8rem;
+    pointer-events: none;
+  }
+
+  /* Oy tuşları */
+  .votes { display: flex; gap: 6px; }
+  .card .votes {
+    position: absolute; right: 10px; bottom: 10px;
+    opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s;
+  }
+  .card:hover .votes, .card:focus-within .votes { opacity: 1; transform: none; }
+  @media (hover: none) { .card .votes { opacity: 1; transform: none; } }
+  .vote {
+    width: 38px; height: 38px; border-radius: 50%; border: 0;
+    display: grid; place-items: center;
+    background: rgba(15,17,19,.75); backdrop-filter: blur(4px);
+    font-size: 1.05rem; line-height: 1;
+    transition: background .15s, transform .1s;
+  }
+  .vote:hover { background: rgba(40,44,50,.9); }
+  .vote:active { transform: scale(.92); }
+  .vote span { filter: grayscale(1) brightness(1.4); transition: filter .15s; }
+  .vote.like.on    { background: var(--like); }
+  .vote.dislike.on { background: var(--dislike); }
+  .vote.on span { filter: none; }
+
+  /* Durum mesajları */
+  .status { text-align: center; color: var(--muted); padding: 40px 16px; }
+  .status button {
+    margin-top: 12px; border: 0; background: var(--panel-2);
+    padding: 9px 18px; border-radius: 999px;
+  }
+  .status button:hover { background: #2c3137; }
+  .spinner {
+    width: 28px; height: 28px; margin: 0 auto;
+    border: 3px solid var(--panel-2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #sentinel { height: 1px; }
+
+  /* Tam ekran */
+  .lightbox {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(5,6,7,.95);
+    display: none; align-items: center; justify-content: center;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 92vw; max-height: 86vh; border-radius: 6px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    opacity: 0; transition: opacity .3s;
+  }
+  .lightbox img.loaded { opacity: 1; }
+  .lightbox.disliked img.loaded { opacity: .45; filter: grayscale(.6); }
+  .lb-btn {
+    position: absolute; border: 0; background: rgba(255,255,255,.08);
+    width: 48px; height: 48px; border-radius: 50%;
+    font-size: 1.5rem; display: grid; place-items: center;
+  }
+  .lb-btn:hover { background: rgba(255,255,255,.18); }
+  .lb-close { top: 16px; right: 16px; }
+  .lb-prev { left: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-next { right: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-foot {
+    position: absolute; left: 16px; right: 16px; bottom: 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .lb-foot .vote { width: 44px; height: 44px; font-size: 1.2rem; background: rgba(255,255,255,.1); }
+  .lb-foot .vote.like.on    { background: var(--like); }
+  .lb-foot .vote.dislike.on { background: var(--dislike); }
+  .credit { color: var(--muted); font-size: .8rem; text-align: right; }
+  .lb-spinner { position: absolute; }
+  @media (max-width: 600px) {
+    .lb-prev, .lb-next { top: auto; bottom: 70px; transform: none; }
+    .lightbox img { max-width: 100vw; max-height: 74vh; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div>
+      <h1>Ayhan'ın Galerisi</h1>
+      <p class="sub">Her açılışta rastgele yatay fotoğraflar</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tabAll" aria-selected="true">Tümü</button>
+      <button class="tab" role="tab" id="tabLiked" aria-selected="false">Beğendiklerim<span class="count" id="likedCount"></span></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="gallery" id="gallery"></div>
+  <div class="status" id="status"><div class="spinner"></div></div>
+  <div id="sentinel"></div>
+</main>
+
+<div class="lightbox" id="lightbox" aria-hidden="true">
+  <div class="spinner lb-spinner" id="lbSpinner"></div>
+  <img id="lbImg" alt="">
+  <button class="lb-btn lb-close" id="lbClose" title="Kapat (Esc)">✕</button>
+  <button class="lb-btn lb-prev" id="lbPrev" title="Önceki (←)">‹</button>
+  <button class="lb-btn lb-next" id="lbNext" title="Sonraki (→)">›</button>
+  <div class="lb-foot">
+    <div class="votes" id="lbVotes"></div>
+    <div class="credit" id="lbCredit"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const BATCH = 18;
+  const STORE_KEY = "manzaraKatalogu.oylar";
+
+  const $ = (id) => document.getElementById(id);
+  const gallery = $("gallery"), statusEl = $("status"), sentinel = $("sentinel");
+
+  // ---------- Oylar (bu bilgisayarda saklanır) ----------
+  let votes = {};
+  try { votes = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { votes = {}; }
+  function saveVotes() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(votes)); } catch (e) { /* oturumluk kalır */ }
+  }
+  function setVote(photo, value) {
+    const current = votes[photo.id] && votes[photo.id].vote;
+    if (current === value) delete votes[photo.id];          // aynı tuş = geri al
+    else votes[photo.id] = { vote: value, author: photo.author, w: photo.w, h: photo.h, t: Date.now() };
+    saveVotes();
+    refreshVoteUI(photo.id);
+  }
+  const voteOf = (id) => (votes[id] ? votes[id].vote : null);
+  const likedList = () => Object.entries(votes)
+    .filter(([, v]) => v.vote === "like")
+    .sort((a, b) => b[1].t - a[1].t)
+    .map(([id, v]) => ({ id, author: v.author, w: v.w, h: v.h }));
+
+  function makeVoteButtons(photo) {
+    const wrap = document.createElement("div");
+    wrap.className = "votes";
+    const mk = (cls, emoji, title, value) => {
+      const b = document.createElement("button");
+      b.className = "vote " + cls;
+      b.title = title;
+      b.innerHTML = "<span>" + emoji + "</span>";
+      b.addEventListener("click", (e) => { e.stopPropagation(); setVote(photo, value); });
+      return b;
+    };
+    wrap.append(mk("like", "👍", "Beğen", "like"), mk("dislike", "👎", "Beğenme", "dislike"));
+    return wrap;
+  }
+  function paintVotes(wrap, id) {
+    const v = voteOf(id);
+    wrap.querySelector(".like").classList.toggle("on", v === "like");
+    wrap.querySelector(".dislike").classList.toggle("on", v === "dislike");
+  }
+  function refreshVoteUI(id) {
+    document.querySelectorAll('.card[data-id="' + CSS.escape(String(id)) + '"]').forEach((card) => {
+      const v = voteOf(id);
+      card.classList.toggle("liked", v === "like");
+      card.classList.toggle("disliked", v === "dislike");
+      paintVotes(card.querySelector(".votes"), id);
+    });
+    if (lb.open && lb.list[lb.index] && String(lb.list[lb.index].id) === String(id)) paintLightboxVotes();
+    updateLikedCount();
+    // Beğendiklerim'de beğeni kaldırılırsa listeyi yenile (tam ekran açık değilken)
+    if (view === "liked" && !lb.open) renderLiked();
+  }
+  function updateLikedCount() {
+    const n = likedList().length;
+    $("likedCount").textContent = n ? n : "";
+  }
+
+  // ---------- Picsum havuzu ----------
+  const pool = [];
+  let pagesOrder = [], pageCursor = 0, totalPages = 11, fallbackMode = false, fetching = false;
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  pagesOrder = shuffle(Array.from({ length: totalPages }, (_, i) => i + 1));
+
+  async function fetchPage(page) {
+    const res = await fetch("https://picsum.photos/v2/list?page=" + page + "&limit=100");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
+
+  async function refillPool() {
+    if (fetching) return;
+    fetching = true;
+    try {
+      if (fallbackMode) {
+        // Liste alınamazsa: rastgele id'ler, 3:2 yatay kırpma
+        const ids = shuffle(Array.from({ length: 1085 }, (_, i) => i)).slice(0, 100);
+        ids.forEach((id) => pool.push({ id, author: null, w: 3, h: 2 }));
+        return;
+      }
+      let added = 0, tries = 0;
+      while (added < BATCH && tries < 3) {
+        if (pageCursor >= pagesOrder.length) { pagesOrder = shuffle(pagesOrder); pageCursor = 0; }
+        const data = await fetchPage(pagesOrder[pageCursor++]);
+        tries++;
+        if (!data.length) continue;
+        const landscape = data.filter((p) => p.width > p.height)
+          .map((p) => ({ id: p.id, author: p.author, w: p.width, h: p.height }));
+        shuffle(landscape);
+        pool.push(...landscape);
+        added += landscape.length;
+      }
+    } catch (e) {
+      if (!fallbackMode) { fallbackMode = true; fetching = false; return refillPool(); }
+      throw e;
+    } finally {
+      fetching = false;
+    }
+  }
+
+  const thumbUrl = (p) => "https://picsum.photos/id/" + p.id + "/800/" + Math.round(800 * p.h / p.w);
+  const fullUrl  = (p) => "https://picsum.photos/id/" + p.id + "/1920/" + Math.round(1920 * p.h / p.w);
+
+  // ---------- Galeri ----------
+  let view = "all";
+  let shown = [];           // "Tümü" görünümündeki fotoğraflar (sırasıyla)
+  let loadedAny = false, failedFirst = 0;
+
+  function makeCard(photo, list) {
+    const card = document.createElement("figure");
+    card.className = "card";
+    card.dataset.id = photo.id;
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = photo.author ? "Fotoğraf: " + photo.author : "Manzara fotoğrafı";
+    img.width = 800;
+    img.height = Math.round(800 * photo.h / photo.w);
+    img.style.aspectRatio = photo.w + " / " + photo.h;
+    img.src = thumbUrl(photo);
+    img.onload = () => { img.classList.add("loaded"); loadedAny = true; };
+    img.onerror = () => {
+      // Bulunamayan foto (yedek modda olabilir) — kaldır
+      const i = list.indexOf(photo);
+      if (i > -1) list.splice(i, 1);
+      card.remove();
+      if (!loadedAny && ++failedFirst >= BATCH) showError();
+    };
+    img.addEventListener("click", () => openLightbox(list, list.indexOf(photo)));
+    const votesEl = makeVoteButtons(photo);
+    card.append(img, votesEl);
+    const v = voteOf(photo.id);
+    card.classList.toggle("liked", v === "like");
+    card.classList.toggle("disliked", v === "dislike");
+    paintVotes(votesEl, photo.id);
+    return card;
+  }
+
+  let loadingMore = false;
+  async function loadMore() {
+    if (view !== "all" || loadingMore) return;
+    loadingMore = true;
+    statusEl.innerHTML = '<div class="spinner"></div>';
+    try {
+      if (pool.length < BATCH) await refillPool();
+      const batch = pool.splice(0, BATCH);
+      const frag = document.createDocumentFragment();
+      batch.forEach((p) => { shown.push(p); frag.append(makeCard(p, shown)); });
+      gallery.append(frag);
+      statusEl.innerHTML = "";
+    } catch (e) {
+      showError();
+    } finally {
+      loadingMore = false;
+    }
+    // Ekran hâlâ dolmadıysa devam et
+    requestAnimationFrame(() => {
+      if (view === "all" && sentinel.getBoundingClientRect().top < innerHeight + 600 && !statusEl.querySelector("button")) loadMore();
+    });
+  }
+
+  function showError() {
+    statusEl.innerHTML = "<p>Fotoğraflar yüklenemedi. İnternet bağlantını kontrol et.</p>";
+    const b = document.createElement("button");
+    b.textContent = "Tekrar dene";
+    b.onclick = () => { failedFirst = 0; fallbackMode = false; statusEl.innerHTML = ""; loadMore(); };
+    statusEl.append(b);
+  }
+
+  new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) loadMore();
+  }, { rootMargin: "600px" }).observe(sentinel);
+
+  // ---------- Sekmeler ----------
+  let savedScroll = 0;
+  function renderAll() {
+    gallery.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    shown.forEach((p) => frag.append(makeCard(p, shown)));
+    gallery.append(frag);
+    statusEl.innerHTML = "";
+  }
+  let likedShown = [];
+  function renderLiked() {
+    likedShown = likedList();
+    gallery.innerHTML = "";
+    if (!likedShown.length) {
+      statusEl.innerHTML = "<p>Henüz beğendiğin fotoğraf yok.<br>Fotoğrafların üzerindeki 👍 tuşuyla beğenebilirsin.</p>";
+      return;
+    }
+    statusEl.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    likedShown.forEach((p) => frag.append(makeCard(p, likedShown)));
+    gallery.append(frag);
+  }
+  function setView(v) {
+    if (v === view) return;
+    if (view === "all") savedScroll = scrollY;
+    view = v;
+    $("tabAll").setAttribute("aria-selected", v === "all");
+    $("tabLiked").setAttribute("aria-selected", v === "liked");
+    if (v === "liked") { renderLiked(); scrollTo(0, 0); }
+    else { renderAll(); scrollTo(0, savedScroll); }
+  }
+  $("tabAll").onclick = () => setView("all");
+  $("tabLiked").onclick = () => setView("liked");
+
+  // ---------- Tam ekran ----------
+  const lb = { open: false, list: [], index: 0 };
+  const lbEl = $("lightbox"), lbImg = $("lbImg"), lbVotesWrap = $("lbVotes");
+
+  function paintLightboxVotes() {
+    const p = lb.list[lb.index];
+    if (!p) return;
+    lbVotesWrap.innerHTML = "";
+    const w = makeVoteButtons(p);
+    lbVotesWrap.append(...w.children);
+    lbVotesWrap.querySelector(".like").classList.toggle("on", voteOf(p.id) === "like");
+    lbVotesWrap.querySelector(".dislike").classList.toggle("on", voteOf(p.id) === "dislike");
+    lbEl.classList.toggle("disliked", voteOf(p.id) === "dislike");
+  }
+  function showLightbox() {
+    const p = lb.list[lb.index];
+    if (!p) return;
+    lbImg.classList.remove("loaded");
+    $("lbSpinner").style.display = "";
+    lbImg.onload = () => { lbImg.classList.add("loaded"); $("lbSpinner").style.display = "none"; };
+    lbImg.src = fullUrl(p);
+    lbImg.alt = p.author ? "Fotoğraf: " + p.author : "Manzara fotoğrafı";
+    $("lbCredit").textContent = p.author ? "Fotoğraf: " + p.author : "";
+    $("lbPrev").style.visibility = lb.index > 0 ? "visible" : "hidden";
+    const atEnd = lb.index >= lb.list.length - 1;
+    $("lbNext").style.visibility = atEnd && !(view === "all") ? "hidden" : "visible";
+    paintLightboxVotes();
+    // Bir sonrakini önceden yükle
+    const n = lb.list[lb.index + 1];
+    if (n) new Image().src = fullUrl(n);
+  }
+  function openLightbox(list, index) {
+    if (index < 0) return;
+    lb.open = true; lb.list = list; lb.index = index;
+    lbEl.classList.add("open");
+    lbEl.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    showLightbox();
+  }
+  function closeLightbox() {
+    lb.open = false;
+    lbEl.classList.remove("open");
+    lbEl.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    lbImg.removeAttribute("src");
+    if (view === "liked") renderLiked();
+  }
+  async function step(d) {
+    const next = lb.index + d;
+    if (next < 0) return;
+    if (next >= lb.list.length) {
+      if (view !== "all") return;
+      await loadMore();                    // Tümü'nde sona gelince yenilerini getir
+      if (next >= lb.list.length) return;
+    }
+    lb.index = next;
+    showLightbox();
+  }
+  $("lbClose").onclick = closeLightbox;
+  $("lbPrev").onclick = (e) => { e.stopPropagation(); step(-1); };
+  $("lbNext").onclick = (e) => { e.stopPropagation(); step(1); };
+  lbEl.addEventListener("click", (e) => { if (e.target === lbEl) closeLightbox(); });
+  document.addEventListener("keydown", (e) => {
+    if (!lb.open) return;
+    if (e.key === "Escape") closeLightbox();
+    else if (e.key === "ArrowLeft") step(-1);
+    else if (e.key === "ArrowRight") step(1);
+  });
+  let touchX = null;
+  lbEl.addEventListener("touchstart", (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+  lbEl.addEventListener("touchend", (e) => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+    touchX = null;
+  });
+
+  updateLikedCount();
+})();
+</script>
+</body>
+</html>
